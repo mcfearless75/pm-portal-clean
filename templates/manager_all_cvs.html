@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Manager: All CVs{% endblock %}
+{% block content %}
+<div class="container">
+    <h2>All Uploaded CVs</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Area</th>
+                <th>Uploaded</th>
+                <th>Tags</th>
+                <th>AI Summary</th>
+                <th>Download</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for resume in resumes %}
+            <tr>
+                <td>{{ resume.user.name }}</td>
+                <td>{{ resume.user.area or "-" }}</td>
+                <td>{{ resume.upload_time.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    {% if resume.tags %}
+                        {{ resume.tags | map(attribute='tag') | join(', ') }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>{{ resume.summary or "-" }}</td>
+                <td>
+                    <a href="{{ url_for('download_resume', resume_id=resume.id) }}">Download</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<style>
+table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
+th, td { padding: 0.6rem; border: 1px solid #ddd; text-align: left; }
+th { background: #eee; }
+</style>
+{% endblock %}

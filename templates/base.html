@@ -106,12 +106,16 @@
         <span class="site-title">PM Portal</span>
       </div>
     </header>
+    <div class="tagline">Connecting top contractors and agencies across the UK—AI-powered, efficient, and easy.</div>
     <nav class="site-nav">
       <a href="{{ url_for('home') }}" {% if request.endpoint=='home' %}class="active"{% endif %}>Home</a>
       {% if current_user.is_authenticated %}
         <a href="{{ url_for('search') }}" {% if request.endpoint=='search' %}class="active"{% endif %}>Search</a>
         {% if current_user.role == 'agency' %}
           <a href="{{ url_for('buy_credits') }}" {% if request.endpoint=='buy_credits' %}class="active"{% endif %}>Buy Credits</a>
+        {% endif %}
+        {% if current_user.role == 'manager' %}
+          <a href="{{ url_for('manager_all_cvs') }}" {% if request.endpoint=='manager_all_cvs' %}class="active"{% endif %}>All CVs (Manager)</a>
         {% endif %}
         <a href="{{ url_for('profile') }}" {% if request.endpoint=='profile' %}class="active"{% endif %}>Profile</a>
         <a href="{{ url_for('logout') }}">Logout</a>

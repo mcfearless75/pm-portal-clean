@@ -47,7 +47,7 @@ class User(db.Model, UserMixin):
     id       = db.Column(db.Integer, primary_key=True)
     name     = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(256), nullable=False)
-    role     = db.Column(db.String(20), nullable=False)  # 'contractor' or 'agency'
+    role     = db.Column(db.String(20), nullable=False)  # 'contractor', 'agency', or 'manager'
     area     = db.Column(db.String(100), nullable=True)
     credits  = db.Column(db.Integer, default=0)
     resumes  = db.relationship('Resume', backref='user', lazy=True)
@@ -188,6 +188,16 @@ def logout():
     logout_user()
     flash('Logged out.')
     return redirect(url_for('login'))
+
+@app.route('/manager/all_cvs')
+@login_required
+def manager_all_cvs():
+    if current_user.role != 'manager':
+        flash("You do not have permission to access this page.")
+        return redirect(url_for('home'))
+    all_resumes = Resume.query.order_by(Resume.upload_time.desc()).all()
+    return render_template('manager_all_cvs.html', resumes=all_resumes)
+
 
 @app.route('/upload', methods=['POST'])
 @login_required
