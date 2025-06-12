@@ -16,29 +16,33 @@ from flask_login import (
 from passlib.hash import pbkdf2_sha256
 from PyPDF2 import PdfReader
 import docx
+import openai
 import stripe
+from flask_migrate import Migrate
 
-# Set your Stripe test secret key here
-import os
+# ----------- SETUP SECRETS SAFELY -----------
+# Set these as environment variables (locally or in Render)
 stripe.api_key = os.getenv('STRIPE_API_KEY')
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 app = Flask(__name__)
-app.secret_key = 'replace-with-a-secure-random-key'
+app.secret_key = os.getenv('SECRET_KEY', 'change-this-in-production!')
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 DB_PATH       = os.path.join(BASE_DIR, 'database.db')
 
-app.config['UPLOAD_FOLDER']               = UPLOAD_FOLDER
-app.config['SQLALCHEMY_DATABASE_URI']     = f"sqlite:///{DB_PATH}"
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+migrate = Migrate(app, db)  # Flask-Migrate for safe schema changes
 
-# --- Models ---
+# ----------- MODELS -----------
 class User(db.Model, UserMixin):
     id       = db.Column(db.Integer, primary_key=True)
     name     = db.Column(db.String(120), unique=True, nullable=False)
@@ -53,6 +57,7 @@ class Resume(db.Model):
     filename    = db.Column(db.String(260), nullable=False)
     upload_time = db.Column(db.DateTime, default=datetime.utcnow)
     user_id     = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    summary     = db.Column(db.Text, nullable=True)
 
 class ResumeTag(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
@@ -95,6 +100,21 @@ def extract_text(filepath):
             text += p.text + ' '
     return text
 
+def generate_cv_summary(cv_text):
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an expert CV summariser."},
+                {"role": "user", "content": f"Summarise this CV for recruiters: {cv_text[:3500]}"}
+            ],
+            max_tokens=100
+        )
+        return response['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        print(f"OpenAI summary error: {e}")
+        return "Summary not available."
+
 def parse_and_save_tags(resume):
     path = os.path.join(app.config['UPLOAD_FOLDER'], resume.filename)
     raw  = extract_text(path).lower()
@@ -114,11 +134,8 @@ def home():
 def forgot_password():
     if request.method == 'POST':
         email_or_user = request.form.get('username')
-        # In a real app: Find user, send reset link by email.
-        # For now, always display a success message:
         return render_template('forgot_password.html', message="If an account exists, a reset link has been sent.")
     return render_template('forgot_password.html', message=None)
-
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -194,7 +211,11 @@ def upload_cv():
     save_path = os.path.join(UPLOAD_FOLDER, safe_name)
     file.save(save_path)
 
-    resume = Resume(filename=safe_name, user_id=user.id)
+    # Extract text and generate AI summary
+    text_content = extract_text(save_path)
+    summary = generate_cv_summary(text_content)
+
+    resume = Resume(filename=safe_name, user_id=user.id, summary=summary)
     db.session.add(resume)
     db.session.commit()
 
@@ -203,7 +224,6 @@ def upload_cv():
     message = f"Thanks, {username}! Your CV “{file.filename}” has been uploaded."
     return render_template('index.html', message=message)
 
-# Stripe credit purchase routes
 @app.route('/buy_credits', methods=['GET', 'POST'])
 @login_required
 def buy_credits():
@@ -225,7 +245,7 @@ def create_checkout_session():
         flash('Invalid quantity.')
         return redirect(url_for('buy_credits'))
 
-    price_per_credit = 200  # in pence (so, £2 per credit)
+    price_per_credit = 200  # in pence (£2 per credit)
     session = stripe.checkout.Session.create(
         payment_method_types=['card'],
         line_items=[{
@@ -254,43 +274,6 @@ def payment_success():
         db.session.commit()
         flash(f'Success! {credits} credits added. You now have {current_user.credits} credits.')
     return redirect(url_for('search'))
-
-@app.route('/profile', methods=['GET', 'POST'])
-@login_required
-def profile():
-    if request.method == 'POST':
-        name = request.form['username'].strip()
-        area = request.form.get('area', '').strip()
-        pw   = request.form.get('password', '')
-        changed = False
-
-        # Check if new name is taken
-        if name and name != current_user.name:
-            if User.query.filter_by(name=name).first():
-                flash('That username is already taken.')
-                return redirect(url_for('profile'))
-            current_user.name = name
-            changed = True
-
-        # Update area/location
-        if area != current_user.area:
-            current_user.area = area
-            changed = True
-
-        # Update password if provided
-        if pw:
-            current_user.password = pbkdf2_sha256.hash(pw)
-            changed = True
-
-        if changed:
-            db.session.commit()
-            flash('Profile updated successfully.')
-        else:
-            flash('No changes made.')
-        return redirect(url_for('profile'))
-
-    return render_template('profile.html')
-
 
 @app.route('/search', methods=['GET','POST'])
 @login_required
@@ -352,6 +335,39 @@ def download_resume(resume_id):
     return send_from_directory(
         UPLOAD_FOLDER, resume.filename, as_attachment=True
     )
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        name = request.form['username'].strip()
+        area = request.form.get('area', '').strip()
+        pw   = request.form.get('password', '')
+        changed = False
+
+        if name and name != current_user.name:
+            if User.query.filter_by(name=name).first():
+                flash('That username is already taken.')
+                return redirect(url_for('profile'))
+            current_user.name = name
+            changed = True
+
+        if area != current_user.area:
+            current_user.area = area
+            changed = True
+
+        if pw:
+            current_user.password = pbkdf2_sha256.hash(pw)
+            changed = True
+
+        if changed:
+            db.session.commit()
+            flash('Profile updated successfully.')
+        else:
+            flash('No changes made.')
+        return redirect(url_for('profile'))
+
+    return render_template('profile.html')
 
 if __name__ == '__main__':
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
