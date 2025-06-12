@@ -152,7 +152,8 @@ def register():
         role = request.form['role']
         area = request.form.get('area', '').strip()
 
-        if not name or not pw or role not in ['contractor', 'agency', 'manager']:
+        # Only allow 'contractor' and 'agency' from the registration form
+        if not name or not pw or role not in ['contractor', 'agency']:
             flash('All fields are required.')
             return redirect(url_for('register'))
 
@@ -183,6 +184,8 @@ def login():
         if user and pbkdf2_sha256.verify(pw, user.password):
             login_user(user)
             flash('Logged in!')
+            if user.role == "manager":
+                app.logger.info(f"Manager {user.name} logged in at {datetime.utcnow()}")
             return redirect(url_for('home'))
         flash('Invalid credentials.')
         return redirect(url_for('login'))
