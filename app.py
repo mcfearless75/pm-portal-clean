@@ -436,3 +436,18 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(debug=True)
+
+@app.route("/createmanager")
+def create_manager_user():
+    from passlib.hash import pbkdf2_sha256
+    if not User.query.filter_by(name="manager1").first():
+        user = User(
+            name="manager1",
+            password=pbkdf2_sha256.hash("YourSuperSecretPassword"),
+            role="manager"
+        )
+        db.session.add(user)
+        db.session.commit()
+        return "Manager created!"
+    return "Manager already exists!"
+
