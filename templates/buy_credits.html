@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Buy Credits – PM Portal{% endblock %}
+{% block content %}
+  <h2>Buy Download Credits</h2>
+  <p class="tagline">Unlock the Vault. Each credit lets you download a contractor CV instantly.</p>
+  <form action="{{ url_for('create_checkout_session') }}" method="post" class="stripe-form">
+    <label for="quantity"><b>How many credits do you need?</b></label>
+    <input type="number" id="quantity" name="quantity" min="1" value="5" required>
+    <p class="price-info">Price: <strong>£2 per credit</strong></p>
+    <!-- BADGE OF TRUST -->
+    <div class="trust-badge">
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none"><circle cx="17" cy="17" r="16" fill="#e3f2fd" stroke="#00c3ff" stroke-width="2"/><path d="M10 17l5 5 9-11" stroke="#00c3ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      <div>
+        <span>Payment secured by Stripe</span><br>
+        <small style="color:#28a745;font-weight:600;">SSL encrypted · PCI compliant</small>
+      </div>
+    </div>
+    <button type="submit" class="stripe-btn">
+      <img src="https://stripe.com/img/v3/home/social.png" alt="Stripe" class="stripe-icon"> Pay with Stripe
+    </button>
+  </form>
+  <div class="info" style="margin-top:2rem; color:#c0eaff; font-size:0.98rem;">
+    <span>🔒 100% secure payment – powered by Stripe</span>
+    <span style="float:right;"><a href="{{ url_for('search') }}">← Back to Search</a></span>
+  </div>
+  <style>
+    .stripe-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+      align-items: stretch;
+      z-index: 2;
+      position: relative;
+      margin-bottom: 1rem;
+    }
+    .stripe-form label {
+      text-align: left;
+      font-weight: 600;
+      color: #e3f2fd;
+      margin-bottom: 0.1rem;
+      margin-top: 1rem;
+      font-size: 1.08rem;
+    }
+    .stripe-form input[type="number"] {
+      padding: 0.7rem 0.5rem;
+      border-radius: 7px;
+      border: 1px solid #79bfff;
+      font-size: 1.15rem;
+      background: #e3f2fd;
+      color: #234;
+      font-weight: bold;
+      margin-bottom: 0.1rem;
+      transition: box-shadow 0.2s;
+      margin-top: 0.3rem;
+    }
+    .stripe-form input[type="number"]:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px #3498db80;
+    }
+    .price-info {
+      font-size: 1rem;
+      color: #90caf9;
+      margin-bottom: 0.2rem;
+      margin-top: -0.8rem;
+    }
+    .trust-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.8em;
+      margin-bottom: 1rem;
+      justify-content: center;
+      background: rgba(27, 191, 255, 0.08);
+      border-radius: 8px;
+      padding: 0.5em 0.9em;
+      box-shadow: 0 2px 8px #00c3ff23;
+      font-size: 1.08rem;
+      color: #eaf6fb;
+      font-weight: 600;
+    }
+    .trust-badge svg {
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 2px #00c3ff77);
+    }
+    .trust-badge span {
+      color: #00eaff;
+      font-weight: 700;
+      font-size: 1.08em;
+      letter-spacing: 0.01em;
+    }
+    .stripe-btn {
+      background: linear-gradient(90deg, #00c3ff 0%, #0078ff 100%);
+      color: #fff;
+      font-size: 1.15rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 7px;
+      padding: 0.9rem 1.6rem;
+      margin-top: 0.2rem;
+      box-shadow: 0 3px 14px #005bb6a8;
+      cursor: pointer;
+      transition: background 0.19s, transform 0.14s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.7em;
+    }
+    .stripe-btn:hover {
+      background: linear-gradient(90deg, #0078ff 0%, #00c3ff 100%);
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 7px 26px #0078ff60;
+    }
+    .stripe-icon {
+      width: 30px;
+      height: 30px;
+      background: none;
+      border-radius: 5px;
+      margin-right: 0.3em;
+      margin-bottom: -3px;
+    }
+    .info a {
+      color: #bbdefb;
+      text-decoration: underline;
+      font-weight: 600;
+      font-size: 0.97rem;
+    }
+    .info a:hover {
+      color: #fff;
+    }
+  </style>
+{% endblock %}

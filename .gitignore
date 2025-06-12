@@ -1,0 +1,6 @@
+*.exe
+.env
+*.pyc
+__pycache__/
+uploads/
+database.db

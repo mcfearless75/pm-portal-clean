@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Login – PM Portal{% endblock %}
+{% block content %}
+  <h2>Login to PM Portal</h2>
+  <p class="tagline">Access your vault of knowledge and opportunities.</p>
+  <form action="{{ url_for('login') }}" method="post" class="login-form" autocomplete="off">
+    <label for="username">Username</label>
+    <div class="input-wrap">
+      <span class="input-icon">👤</span>
+      <input type="text" name="username" id="username" required placeholder="Enter your username" autofocus />
+    </div>
+
+    <label for="password">Password</label>
+    <div class="input-wrap">
+      <span class="input-icon">🔒</span>
+      <input type="password" name="password" id="password" required placeholder="Enter your password" />
+    </div>
+
+    <button type="submit" class="stripe-btn login-btn">🔓 Login</button>
+  </form>
+  <div class="login-links">
+    <span>Don’t have an account?</span>
+    <a href="{{ url_for('register') }}">Register</a>
+    <span style="margin:0 0.5em;">|</span>
+    <a href="{{ url_for('forgot_password') }}">Forgot password?</a>
+  </div>
+  <style>
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1.2rem;
+      max-width: 370px;
+      margin: 2.7rem auto 0 auto;
+      background: rgba(13,30,50,0.13);
+      border-radius: 12px;
+      padding: 2rem 1.7rem 1.3rem 1.7rem;
+      box-shadow: 0 2px 16px #2681c822;
+    }
+    .login-form label {
+      font-weight: 700;
+      color: #eaf6fb;
+      margin-bottom: 0.22em;
+      text-align: left;
+      font-size: 1.07em;
+      margin-top: 0.4em;
+    }
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.12em;
+      color: #42a5f5;
+      pointer-events: none;
+    }
+    .login-form input[type="text"],
+    .login-form input[type="password"] {
+      width: 100%;
+      padding: 0.75em 0.6em 0.75em 2.2em;
+      border-radius: 7px;
+      border: 1px solid #69b5fa;
+      background: #e3f2fd;
+      color: #1a2940;
+      font-size: 1.08em;
+      font-weight: 600;
+      margin-bottom: 0.05em;
+      transition: border 0.2s, box-shadow 0.2s;
+      box-sizing: border-box;
+    }
+    .login-form input:focus {
+      border-color: #3498db;
+      outline: none;
+      box-shadow: 0 0 0 2px #3498db55;
+    }
+    .login-btn {
+      margin-top: 1.2rem;
+      width: 100%;
+      font-size: 1.18em;
+      padding: 0.85em 0;
+      letter-spacing: 0.01em;
+    }
+    .login-links {
+      margin-top: 1.7em;
+      text-align: center;
+      font-size: 1.05em;
+      color: #b2ebf2;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.4em;
+      flex-wrap: wrap;
+    }
+    .login-links a {
+      color: #42b0ff;
+      font-weight: 600;
+      text-decoration: underline;
+      transition: color 0.16s;
+    }
+    .login-links a:hover {
+      color: #fff;
+    }
+    @media (max-width: 600px) {
+      .login-form { padding: 1.4rem 0.7rem; max-width: 100%; }
+      .login-links { flex-direction: column; gap: 0.7em; }
+    }
+  </style>
+{% endblock %}

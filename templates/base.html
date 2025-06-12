@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}PM Portal{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='pm-portal-logo.png') }}">
+  <style>
+    body {
+      background: radial-gradient(ellipse at top left, #28354A 0%, #111820 100%);
+      min-height: 100vh;
+      margin: 0;
+      font-family: 'Segoe UI', 'Inter', Arial, sans-serif;
+      color: #e3f2fd;
+    }
+    .main-container {
+      max-width: 830px;
+      margin: 3.2rem auto 0 auto;
+      background: linear-gradient(120deg, rgba(18,28,40,0.96) 88%, #253447 100%);
+      border-radius: 22px;
+      box-shadow: 0 6px 54px #121b2a77, 0 0px 0 #1a222e inset;
+      padding: 2.7rem 2.2rem 2.4rem 2.2rem;
+    }
+    header.site-header {
+      display: flex;
+      align-items: center;
+      gap: 1.1em;
+      justify-content: flex-start;
+      margin-bottom: 2.2em;
+    }
+    .site-logo {
+      height: 64px;
+      width: 64px;
+      border-radius: 13px;
+      background: linear-gradient(120deg, #191e25 60%, #265079 100%);
+      box-shadow: 0 5px 30px #019fff26, 0 1px 0 #28282870 inset;
+      object-fit: contain;
+    }
+    .site-title {
+      font-size: 2.2em;
+      font-weight: 900;
+      letter-spacing: 0px;
+      color: #a4b9d9;
+      margin: 0;
+      text-shadow: 0 1px 0 #0e1115, 0 6px 12px #33aaff33;
+    }
+    nav.site-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.2em;
+      margin-top: 0.5em;
+      margin-bottom: 2.3em;
+    }
+    nav.site-nav a {
+      color: #b3e1fc;
+      font-weight: 700;
+      font-size: 1.15em;
+      text-decoration: none;
+      padding: 0.42em 1.15em;
+      border-radius: 8px;
+      background: linear-gradient(90deg, #192231 70%, #253447 100%);
+      box-shadow: 0 2px 9px #09273e11;
+      transition: background 0.17s, color 0.13s, box-shadow 0.18s;
+    }
+    nav.site-nav a:hover, nav.site-nav .active {
+      background: linear-gradient(90deg, #1872a2 20%, #0ba2e6 100%);
+      color: #fff;
+      box-shadow: 0 6px 24px #1db4ff22;
+      text-decoration: underline;
+    }
+    .flash-messages {
+      margin-bottom: 1.5em;
+      padding: 1em;
+      background: #1e2c3c;
+      color: #5fffc8;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px #47ffd629;
+      font-size: 1.1em;
+      font-weight: 600;
+      border-left: 4px solid #33ffc7;
+    }
+    .tagline {
+      margin-top: -0.7em;
+      margin-bottom: 1.7em;
+      color: #8db8e5;
+      font-size: 1.11em;
+      text-align: center;
+      font-weight: 500;
+      text-shadow: 0 1px 1px #0008;
+    }
+    @media (max-width: 700px) {
+      .main-container { padding: 1.1rem 0.3rem 1.7rem 0.3rem; }
+      .site-title { font-size: 1.2em; }
+      .site-header { gap: 0.6em; }
+      nav.site-nav { gap: 0.7em; }
+      .site-logo { height: 38px; width: 38px; }
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="main-container">
+    <header class="site-header">
+      <img src="{{ url_for('static', filename='pm-portal-logo.png') }}" class="site-logo" alt="PM Portal Logo">
+      <div>
+        <span class="site-title">PM Portal</span>
+      </div>
+    </header>
+    <nav class="site-nav">
+      <a href="{{ url_for('home') }}" {% if request.endpoint=='home' %}class="active"{% endif %}>Home</a>
+      {% if current_user.is_authenticated %}
+        <a href="{{ url_for('search') }}" {% if request.endpoint=='search' %}class="active"{% endif %}>Search</a>
+        {% if current_user.role == 'agency' %}
+          <a href="{{ url_for('buy_credits') }}" {% if request.endpoint=='buy_credits' %}class="active"{% endif %}>Buy Credits</a>
+        {% endif %}
+        <a href="{{ url_for('profile') }}" {% if request.endpoint=='profile' %}class="active"{% endif %}>Profile</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a href="{{ url_for('login') }}" {% if request.endpoint=='login' %}class="active"{% endif %}>Login</a>
+        <a href="{{ url_for('register') }}" {% if request.endpoint=='register' %}class="active"{% endif %}>Register</a>
+      {% endif %}
+    </nav>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash-messages">
+          {% for msg in messages %}
+            {{ msg }}<br>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
