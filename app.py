@@ -15,14 +15,13 @@ from flask_login import (
 from passlib.hash import pbkdf2_sha256
 from werkzeug.utils import secure_filename
 
-# Optional: OpenAI support
 import openai
 import stripe
 
-# --- Ensure uploads directory exists at startup ---
+# --- App and Config ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # <--- CREATES uploads folder on startup
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'replace-this-in-prod')
@@ -50,7 +49,7 @@ class Resume(db.Model):
     filename = db.Column(db.String(260), nullable=False)
     upload_time = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    summary = db.Column(db.Text, nullable=True)  # AI summary
+    summary = db.Column(db.Text, nullable=True)
 
 class ResumeTag(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -63,6 +62,10 @@ Resume.tags = db.relationship(
     lazy=True,
     cascade="all, delete-orphan"
 )
+
+# --- Ensure DB tables always exist on launch ---
+with app.app_context():
+    db.create_all()
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -221,12 +224,9 @@ def upload_cv():
     safe_filename = f"{username.replace(' ','_')}_{secure_filename(file.filename)}"
     save_path = os.path.join(UPLOAD_FOLDER, safe_filename)
 
-    # --- Defensive check: ensure uploads folder exists ---
+    # Defensive: Ensure uploads folder exists before saving
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-        print("Created uploads folder at", UPLOAD_FOLDER)
-    else:
-        print("Uploads folder already exists:", UPLOAD_FOLDER)
 
     file.save(save_path)
 
@@ -246,7 +246,6 @@ def upload_cv():
     message = f"Thanks, {username}! Your CV “{file.filename}” has been uploaded."
     return render_template('index.html', message=message)
 
-# --- Stripe credits purchase ---
 @app.route('/buy_credits', methods=['GET', 'POST'])
 @login_required
 def buy_credits():
@@ -268,8 +267,8 @@ def create_checkout_session():
         flash('Invalid quantity.')
         return redirect(url_for('buy_credits'))
 
-    stripe.api_key = os.getenv("STRIPE_API_KEY")  # Set in Render env vars
-    price_per_credit = 200  # £2 per credit
+    stripe.api_key = os.getenv("STRIPE_API_KEY")
+    price_per_credit = 200
     session = stripe.checkout.Session.create(
         payment_method_types=['card'],
         line_items=[{
@@ -362,7 +361,6 @@ def download_resume(resume_id):
         UPLOAD_FOLDER, resume.filename, as_attachment=True
     )
 
-# -- Manager All CVs View --
 @app.route('/manager/all_cvs')
 @login_required
 def manager_all_cvs():
@@ -391,6 +389,4 @@ def ai_assess(resume_id):
     return redirect(url_for('manager_all_cvs'))
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
