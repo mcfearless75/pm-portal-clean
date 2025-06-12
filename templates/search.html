@@ -1,142 +1,51 @@
 {% extends "base.html" %}
-{% block title %}Search CVs – PM Portal{% endblock %}
+{% block title %}Search CVs{% endblock %}
 {% block content %}
-  <h2>Search Contractors</h2>
-  <p class="tagline">Find skilled contractors by name, skill, area, or date.<br>Download CVs instantly.</p>
-  <form action="{{ url_for('search') }}" method="post" class="search-form" autocomplete="off">
-    <label for="query">Name contains:</label>
-    <input type="text" name="query" id="query" value="{{ query }}" placeholder="e.g. Paul" />
+  <div class="search-card">
+    <h2>Search Contractors</h2>
+    <form action="{{ url_for('search') }}" method="post">
+      <label for="query">Name contains:</label>
+      <input type="text" name="query" id="query" value="{{ query }}" placeholder="e.g. Paul" />
 
-    <label for="skill">Skill <span style="font-weight:normal; color:#90caf9;">(e.g. python)</span>:</label>
-    <input type="text" name="skill" id="skill" value="{{ skill }}" placeholder="e.g. python" />
+      <label for="skill">Skill (e.g. python):</label>
+      <input type="text" name="skill" id="skill" value="{{ skill }}" placeholder="e.g. python" />
 
-    <label for="area">Area/Location:</label>
-    <input type="text" name="area" id="area" value="{{ area }}" placeholder="e.g. Manchester" />
+      <label for="area">Area/Location:</label>
+      <input type="text" name="area" id="area" value="{{ area }}" placeholder="e.g. Manchester" />
 
-    <div class="search-row">
-      <div style="flex:1;">
-        <label for="date_from">From:</label>
-        <input type="date" name="date_from" id="date_from" value="{{ date_from }}" />
-      </div>
-      <div style="flex:1; margin-left: 1em;">
-        <label for="date_to">To:</label>
-        <input type="date" name="date_to" id="date_to" value="{{ date_to }}" />
-      </div>
-    </div>
+      <label for="date_from">From:</label>
+      <input type="date" name="date_from" id="date_from" value="{{ date_from }}"/>
 
-    <div class="button-row">
-      <button type="submit" class="stripe-btn search-btn">🔎 Search</button>
-      <button type="reset" class="secondary-btn">🧹 Clear</button>
-    </div>
-  </form>
+      <label for="date_to">To:</label>
+      <input type="date" name="date_to" id="date_to" value="{{ date_to }}"/>
 
-  {% if current_user.role == "agency" and current_user.credits == 0 %}
-    <div style="background: #fff3cd; color: #856404; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-      You need credits to download CVs! <a href="{{ url_for('buy_credits') }}">Buy credits</a>
-    </div>
-  {% elif current_user.role == "agency" %}
-    <div style="color: #28a745; margin-bottom: 1rem;">You have {{ current_user.credits }} download credit{{ current_user.credits != 1 and "s" or "" }}.</div>
-  {% endif %}
+      <label for="ai_query">AI Search (natural language):</label>
+      <input type="text" name="ai_query" id="ai_query" value="{{ ai_query }}" placeholder="e.g. DevOps lead in Manchester, AWS skills" />
 
-  {% if results %}
-    <h2 style="margin-top:1.5rem;">Results ({{ results|length }})</h2>
-    <ul style="list-style:none;padding:0;margin:1.5rem 0 0 0;text-align:left;">
-      {% for user, cv in results %}
-        <li style="margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:1px solid #e0e0e020;">
-          <strong>{{ user.name }}</strong>
-          {% if user.area %}<span style="color:#82b1ff;"> ({{ user.area }})</span>{% endif %}
-          <small style="color:#b2becd;">(uploaded {{ cv.upload_time.strftime('%Y-%m-%d') }})</small><br/>
-          <em>Tags:</em> {{ cv.tags | map(attribute='tag') | join(', ') }}<br/>
-          {% if current_user.role != "agency" or current_user.credits > 0 %}
-            <a href="{{ url_for('download_resume', resume_id=cv.id) }}" style="color:#7cd6ff;">Download CV</a>
-          {% else %}
-            <span style="color:#999; font-style: italic;">Buy credits to download</span>
-          {% endif %}
-        </li>
-      {% endfor %}
-    </ul>
-  {% elif request.method=='POST' %}
-    <p style="color:#d32f2f; margin-top:1.5rem;">No matches found. Try a different search!</p>
-  {% endif %}
+      <button type="submit">Search</button>
+    </form>
 
-  <style>
-    .search-form {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 1.15rem;
-      margin: 2.3rem auto 0 auto;
-      max-width: 440px;
-      background: rgba(13,30,50,0.13);
-      border-radius: 14px;
-      padding: 2rem 1.6rem 1.3rem 1.6rem;
-      box-shadow: 0 2px 16px #2681c822;
-    }
-    .search-form label {
-      font-weight: 700;
-      color: #d7edff;
-      margin-bottom: 0.25em;
-      text-align: left;
-    }
-    .search-form input[type="text"],
-    .search-form input[type="date"] {
-      width: 100%;
-      padding: 0.7em 0.6em;
-      border-radius: 7px;
-      border: 1px solid #69b5fa;
-      background: #e3f2fd;
-      color: #1a2940;
-      font-size: 1.11em;
-      font-weight: 600;
-      transition: border 0.2s, box-shadow 0.2s;
-      margin-bottom: 0.1em;
-      box-sizing: border-box;
-    }
-    .search-form input:focus {
-      border-color: #3498db;
-      outline: none;
-      box-shadow: 0 0 0 2px #3498db55;
-    }
-    .search-row {
-      display: flex;
-      gap: 1.3em;
-      margin-top: 0.4em;
-      margin-bottom: 0.3em;
-    }
-    .button-row {
-      display: flex;
-      gap: 1em;
-      justify-content: center;
-      margin-top: 1.3rem;
-    }
-    .search-btn {
-      font-size: 1.17em;
-      padding: 0.8em 1.5em;
-      min-width: 130px;
-    }
-    .secondary-btn {
-      background: linear-gradient(90deg, #e3f2fd, #90caf9);
-      color: #1976d2;
-      border: none;
-      border-radius: 7px;
-      padding: 0.8em 1.2em;
-      font-size: 1.11em;
-      font-weight: bold;
-      cursor: pointer;
-      box-shadow: 0 2px 8px #1976d211;
-      transition: background 0.19s, color 0.13s, transform 0.14s;
-      min-width: 110px;
-    }
-    .secondary-btn:hover {
-      background: linear-gradient(90deg, #bbdefb 0%, #e3f2fd 100%);
-      color: #0078ff;
-      transform: translateY(-2px) scale(1.04);
-      box-shadow: 0 7px 16px #b5e2ff40;
-    }
-    @media (max-width: 600px) {
-      .search-form, .search-row { flex-direction: column; gap: 0.7em; }
-      .search-row > div { margin-left: 0 !important; }
-      .button-row { flex-direction: column; gap: 0.7em; }
-    }
-  </style>
+    {% if results %}
+      <h2>Results:</h2>
+      <ul class="results-list">
+        {% for user, cv in results %}
+          <li>
+            <strong>{{ user.name }}</strong>
+            {% if user.area %}<span style="color:#666;">({{ user.area }})</span>{% endif %}
+            <small>(uploaded {{ cv.upload_time.strftime('%Y-%m-%d') }})</small><br/>
+            <em>Tags:</em> {{ cv.tags | map(attribute='tag') | join(', ') }}<br/>
+            <em>AI Summary:</em> {{ cv.summary or "-" }}<br/>
+            <a href="{{ url_for('download_resume', resume_id=cv.id) }}">Download CV</a>
+            {% if current_user.role in ['agency', 'manager'] %}
+              <form action="{{ url_for('ai_assess', resume_id=cv.id) }}" method="post" style="display:inline;">
+                <button type="submit" class="btn btn-sm">AI Assess</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% elif request.method=='POST' %}
+      <p>No matches found.</p>
+    {% endif %}
+  </div>
 {% endblock %}

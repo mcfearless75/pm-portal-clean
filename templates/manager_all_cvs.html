@@ -12,6 +12,7 @@
                 <th>Tags</th>
                 <th>AI Summary</th>
                 <th>Download</th>
+                <th>AI Assess</th>
             </tr>
         </thead>
         <tbody>
@@ -27,18 +28,10 @@
                         -
                     {% endif %}
                 </td>
-                <td>{{ resume.summary or "-" }}</td>
+                <td style="max-width:250px;">{{ resume.summary or "-" }}</td>
                 <td>
                     <a href="{{ url_for('download_resume', resume_id=resume.id) }}">Download</a>
                 </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-<style>
-table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
-th, td { padding: 0.6rem; border: 1px solid #ddd; text-align: left; }
-th { background: #eee; }
-</style>
-{% endblock %}
+                <td>
+                  <form action="{{ url_for('ai_assess', resume_id=resume.id) }}" method="post" style="display:inline;">
+                    <button type="submit" class="btn btn-sm">AI

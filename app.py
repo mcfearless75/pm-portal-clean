@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from datetime import datetime
 from collections import Counter
 
@@ -20,8 +21,6 @@ import openai
 import stripe
 from flask_migrate import Migrate
 
-# ----------- SETUP SECRETS SAFELY -----------
-# Set these as environment variables (locally or in Render)
 stripe.api_key = os.getenv('STRIPE_API_KEY')
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
@@ -40,7 +39,7 @@ db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
-migrate = Migrate(app, db)  # Flask-Migrate for safe schema changes
+migrate = Migrate(app, db)
 
 # ----------- MODELS -----------
 class User(db.Model, UserMixin):
@@ -76,10 +75,6 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
-STOPWORDS = {
-    'the','and','for','with','that','this','from','your','have','will',
-    'project','manager','experience'
-}
 
 def allowed_file(filename):
     return (
@@ -115,15 +110,27 @@ def generate_cv_summary(cv_text):
         print(f"OpenAI summary error: {e}")
         return "Summary not available."
 
+def extract_skills_roles(cv_text):
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Extract a comma-separated list of skills, tools, and job titles from this CV. Only output the comma-separated list, no extra explanation."},
+                {"role": "user", "content": cv_text[:3500]}
+            ],
+            max_tokens=150
+        )
+        return [x.strip() for x in response['choices'][0]['message']['content'].split(",") if x.strip()]
+    except Exception as e:
+        print(f"OpenAI extraction error: {e}")
+        return []
+
 def parse_and_save_tags(resume):
     path = os.path.join(app.config['UPLOAD_FOLDER'], resume.filename)
-    raw  = extract_text(path).lower()
-    words = re.findall(r'\b[a-z]{4,}\b', raw)
-    words = [w for w in words if w not in STOPWORDS]
-    top = [w for w,_ in Counter(words).most_common(15)]
-    for w in top:
-        tag = ResumeTag(tag=w, resume_id=resume.id)
-        db.session.add(tag)
+    raw = extract_text(path)
+    tags = extract_skills_roles(raw)
+    for tag in tags:
+        db.session.add(ResumeTag(tag=tag, resume_id=resume.id))
     db.session.commit()
 
 @app.route('/')
@@ -145,7 +152,7 @@ def register():
         role = request.form['role']
         area = request.form.get('area', '').strip()
 
-        if not name or not pw or role not in ['contractor', 'agency']:
+        if not name or not pw or role not in ['contractor', 'agency', 'manager']:
             flash('All fields are required.')
             return redirect(url_for('register'))
 
@@ -189,16 +196,6 @@ def logout():
     flash('Logged out.')
     return redirect(url_for('login'))
 
-@app.route('/manager/all_cvs')
-@login_required
-def manager_all_cvs():
-    if current_user.role != 'manager':
-        flash("You do not have permission to access this page.")
-        return redirect(url_for('home'))
-    all_resumes = Resume.query.order_by(Resume.upload_time.desc()).all()
-    return render_template('manager_all_cvs.html', resumes=all_resumes)
-
-
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload_cv():
@@ -221,7 +218,7 @@ def upload_cv():
     save_path = os.path.join(UPLOAD_FOLDER, safe_name)
     file.save(save_path)
 
-    # Extract text and generate AI summary
+    # Extract text and generate AI summary and tags
     text_content = extract_text(save_path)
     summary = generate_cv_summary(text_content)
 
@@ -293,8 +290,26 @@ def search():
     date_from = request.form.get('date_from','')          if request.method=='POST' else ''
     date_to   = request.form.get('date_to','')            if request.method=='POST' else ''
     area      = request.form.get('area','').strip().lower() if request.method=='POST' else ''
+    ai_query  = request.form.get('ai_query','').strip()   if request.method=='POST' else ''
 
     results = []
+    # AI-powered query parsing
+    if ai_query:
+        ai_response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Given a recruiter search like 'Python Dev in London with AWS', output a JSON with fields: skill, area, job_title."},
+                {"role": "user", "content": ai_query}
+            ],
+            max_tokens=60
+        )
+        try:
+            ai_data = json.loads(ai_response['choices'][0]['message']['content'])
+            if ai_data.get('skill'): skill = ai_data['skill'].lower()
+            if ai_data.get('area'): area = ai_data['area'].lower()
+        except Exception as e:
+            print("AI query parse error:", e)
+
     if request.method == 'POST':
         users = User.query
         if query:
@@ -307,7 +322,7 @@ def search():
             for cv in u.resumes:
                 ok = True
                 if skill:
-                    tags = [t.tag for t in cv.tags]
+                    tags = [t.tag.lower() for t in cv.tags]
                     if skill not in tags:
                         ok = False
                 up = cv.upload_time.date()
@@ -329,6 +344,7 @@ def search():
         area=area,
         date_from=date_from,
         date_to=date_to,
+        ai_query=ai_query,
         results=results
     )
 
@@ -345,6 +361,27 @@ def download_resume(resume_id):
     return send_from_directory(
         UPLOAD_FOLDER, resume.filename, as_attachment=True
     )
+
+@app.route('/ai_assess/<int:resume_id>', methods=['POST'])
+@login_required
+def ai_assess(resume_id):
+    # Only for managers/agencies
+    if current_user.role not in ['manager', 'agency']:
+        flash('Access denied.')
+        return redirect(url_for('search'))
+    resume = Resume.query.get_or_404(resume_id)
+    cv_text = extract_text(os.path.join(app.config['UPLOAD_FOLDER'], resume.filename))
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are an expert recruiter. Evaluate the following CV for strengths, weaknesses, and possible job fit, as a short report."},
+            {"role": "user", "content": cv_text[:3500]}
+        ],
+        max_tokens=250
+    )
+    assessment = response['choices'][0]['message']['content']
+    flash(f"AI Assessment:<br>{assessment}")
+    return redirect(request.referrer or url_for('search'))
 
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
@@ -378,6 +415,15 @@ def profile():
         return redirect(url_for('profile'))
 
     return render_template('profile.html')
+
+@app.route('/manager/all_cvs')
+@login_required
+def manager_all_cvs():
+    if current_user.role != 'manager':
+        flash("You do not have permission to access this page.")
+        return redirect(url_for('home'))
+    all_resumes = Resume.query.order_by(Resume.upload_time.desc()).all()
+    return render_template('manager_all_cvs.html', resumes=all_resumes)
 
 if __name__ == '__main__':
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
