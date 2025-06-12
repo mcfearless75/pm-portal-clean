@@ -1,13 +1,11 @@
 import os
 import re
-import json
 from datetime import datetime
 from collections import Counter
 
 from flask import (
-    Flask, render_template, request,
-    redirect, url_for, flash,
-    send_from_directory
+    Flask, render_template, request, redirect,
+    url_for, flash, send_from_directory
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -15,21 +13,23 @@ from flask_login import (
     logout_user, current_user
 )
 from passlib.hash import pbkdf2_sha256
-from PyPDF2 import PdfReader
-import docx
-import openai
+from werkzeug.utils import secure_filename
+
 import stripe
-from flask_migrate import Migrate
 
-stripe.api_key = os.getenv('STRIPE_API_KEY')
-openai.api_key = os.getenv('OPENAI_API_KEY')
+# Optional: OpenAI setup
+import openai
 
+# Flask app config
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'change-this-in-production!')
+app.secret_key = os.environ.get('SECRET_KEY', 'replace-this-in-prod')
 
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-DB_PATH       = os.path.join(BASE_DIR, 'database.db')
+DB_PATH = os.path.join(BASE_DIR, 'database.db')
+
+# Always create uploads folder!
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
@@ -39,28 +39,27 @@ db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
-migrate = Migrate(app, db)
 
-# ----------- MODELS -----------
+# --- Models ---
 class User(db.Model, UserMixin):
-    id       = db.Column(db.Integer, primary_key=True)
-    name     = db.Column(db.String(120), unique=True, nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(256), nullable=False)
-    role     = db.Column(db.String(20), nullable=False)  # 'contractor', 'agency', or 'manager'
-    area     = db.Column(db.String(100), nullable=True)
-    credits  = db.Column(db.Integer, default=0)
-    resumes  = db.relationship('Resume', backref='user', lazy=True)
+    role = db.Column(db.String(20), nullable=False)  # 'contractor', 'agency', 'manager'
+    area = db.Column(db.String(100), nullable=True)
+    credits = db.Column(db.Integer, default=0)
+    resumes = db.relationship('Resume', backref='user', lazy=True)
 
 class Resume(db.Model):
-    id          = db.Column(db.Integer, primary_key=True)
-    filename    = db.Column(db.String(260), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(260), nullable=False)
     upload_time = db.Column(db.DateTime, default=datetime.utcnow)
-    user_id     = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    summary     = db.Column(db.Text, nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    summary = db.Column(db.Text, nullable=True)  # AI summary
 
 class ResumeTag(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    tag       = db.Column(db.String(100), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    tag = db.Column(db.String(100), nullable=False)
     resume_id = db.Column(db.Integer, db.ForeignKey('resume.id'), nullable=False)
 
 Resume.tags = db.relationship(
@@ -75,6 +74,10 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
+STOPWORDS = {
+    'the','and','for','with','that','this','from','your','have','will',
+    'project','manager','experience'
+}
 
 def allowed_file(filename):
     return (
@@ -86,16 +89,32 @@ def extract_text(filepath):
     ext = filepath.rsplit('.',1)[1].lower()
     text = ''
     if ext == 'pdf':
+        from PyPDF2 import PdfReader
         reader = PdfReader(filepath)
         for page in reader.pages:
             text += page.extract_text() or ''
     elif ext == 'docx':
+        import docx
         doc = docx.Document(filepath)
         for p in doc.paragraphs:
             text += p.text + ' '
     return text
 
+def parse_and_save_tags(resume):
+    path = os.path.join(app.config['UPLOAD_FOLDER'], resume.filename)
+    raw = extract_text(path).lower()
+    words = re.findall(r'\b[a-z]{4,}\b', raw)
+    words = [w for w in words if w not in STOPWORDS]
+    top = [w for w,_ in Counter(words).most_common(15)]
+    for w in top:
+        tag = ResumeTag(tag=w, resume_id=resume.id)
+        db.session.add(tag)
+    db.session.commit()
+
 def generate_cv_summary(cv_text):
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    if not openai.api_key:
+        return None
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -107,34 +126,8 @@ def generate_cv_summary(cv_text):
         )
         return response['choices'][0]['message']['content'].strip()
     except Exception as e:
-        print(f"OpenAI summary error: {e}")
-        return "Summary not available."
-
-def extract_skills_roles(cv_text):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Extract a comma-separated list of skills, tools, and job titles from this CV. Only output the comma-separated list, no extra explanation."},
-                {"role": "user", "content": cv_text[:3500]}
-            ],
-            max_tokens=150
-        )
-        return [x.strip() for x in response['choices'][0]['message']['content'].split(",") if x.strip()]
-    except Exception as e:
-        print(f"OpenAI extraction error: {e}")
-        return []
-
-def parse_and_save_tags(resume):
-    path = os.path.join(app.config['UPLOAD_FOLDER'], resume.filename)
-    raw = extract_text(path)
-    tags = extract_skills_roles(raw)
-    for tag in tags:
-        db.session.add(ResumeTag(tag=tag, resume_id=resume.id))
-    db.session.commit()
-
-with app.app_context():
-    db.create_all()
+        print("OpenAI Error:", e)
+        return None
 
 @app.route('/')
 def home():
@@ -151,12 +144,11 @@ def forgot_password():
 def register():
     if request.method == 'POST':
         name = request.form['username'].strip()
-        pw   = request.form['password']
+        pw = request.form['password']
         role = request.form['role']
         area = request.form.get('area', '').strip()
 
-        # Only allow 'contractor' and 'agency' from the registration form
-        if not name or not pw or role not in ['contractor', 'agency']:
+        if not name or not pw or role not in ['contractor', 'agency', 'manager']:
             flash('All fields are required.')
             return redirect(url_for('register'))
 
@@ -181,18 +173,14 @@ def register():
 def login():
     if request.method == 'POST':
         name = request.form['username'].strip()
-        pw   = request.form['password']
-
+        pw = request.form['password']
         user = User.query.filter_by(name=name).first()
         if user and pbkdf2_sha256.verify(pw, user.password):
             login_user(user)
             flash('Logged in!')
-            if user.role == "manager":
-                app.logger.info(f"Manager {user.name} logged in at {datetime.utcnow()}")
             return redirect(url_for('home'))
         flash('Invalid credentials.')
         return redirect(url_for('login'))
-
     return render_template('login.html')
 
 @app.route('/logout')
@@ -202,11 +190,26 @@ def logout():
     flash('Logged out.')
     return redirect(url_for('login'))
 
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        username = request.form.get('username').strip()
+        area = request.form.get('area').strip()
+        pw = request.form.get('password')
+        current_user.name = username
+        current_user.area = area
+        if pw:
+            current_user.password = pbkdf2_sha256.hash(pw)
+        db.session.commit()
+        flash("Profile updated!")
+    return render_template('profile.html')
+
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload_cv():
     username = current_user.name
-    file     = request.files.get('cv_file')
+    file = request.files.get('cv_file')
 
     if not username or not file or file.filename == '':
         flash('Name and CV file are required.')
@@ -220,23 +223,27 @@ def upload_cv():
         flash('No user found.')
         return redirect(url_for('home'))
 
-    safe_name = f"{username.replace(' ','_')}_{file.filename}"
-    save_path = os.path.join(UPLOAD_FOLDER, safe_name)
+    safe_filename = f"{username.replace(' ','_')}_{secure_filename(file.filename)}"
+    save_path = os.path.join(UPLOAD_FOLDER, safe_filename)
     file.save(save_path)
 
-    # Extract text and generate AI summary and tags
-    text_content = extract_text(save_path)
-    summary = generate_cv_summary(text_content)
-
-    resume = Resume(filename=safe_name, user_id=user.id, summary=summary)
+    resume = Resume(filename=safe_filename, user_id=user.id)
     db.session.add(resume)
     db.session.commit()
 
     parse_and_save_tags(resume)
 
+    # AI summary
+    cv_text = extract_text(save_path)
+    summary = generate_cv_summary(cv_text)
+    if summary:
+        resume.summary = summary
+        db.session.commit()
+
     message = f"Thanks, {username}! Your CV “{file.filename}” has been uploaded."
     return render_template('index.html', message=message)
 
+# --- Stripe credits purchase ---
 @app.route('/buy_credits', methods=['GET', 'POST'])
 @login_required
 def buy_credits():
@@ -258,7 +265,8 @@ def create_checkout_session():
         flash('Invalid quantity.')
         return redirect(url_for('buy_credits'))
 
-    price_per_credit = 200  # in pence (£2 per credit)
+    stripe.api_key = os.getenv("STRIPE_API_KEY")  # Set in Render env vars
+    price_per_credit = 200  # £2 per credit
     session = stripe.checkout.Session.create(
         payment_method_types=['card'],
         line_items=[{
@@ -274,7 +282,7 @@ def create_checkout_session():
         mode='payment',
         success_url=url_for('payment_success', credits=credits, _external=True),
         cancel_url=url_for('buy_credits', _external=True),
-        customer_email=current_user.name  # Only use if username is an email!
+        customer_email=current_user.name if '@' in current_user.name else None
     )
     return redirect(session.url, code=303)
 
@@ -296,26 +304,9 @@ def search():
     date_from = request.form.get('date_from','')          if request.method=='POST' else ''
     date_to   = request.form.get('date_to','')            if request.method=='POST' else ''
     area      = request.form.get('area','').strip().lower() if request.method=='POST' else ''
-    ai_query  = request.form.get('ai_query','').strip()   if request.method=='POST' else ''
+    ai_query  = request.form.get('ai_query','').strip() if request.method=='POST' else ''
 
     results = []
-    # AI-powered query parsing
-    if ai_query:
-        ai_response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Given a recruiter search like 'Python Dev in London with AWS', output a JSON with fields: skill, area, job_title."},
-                {"role": "user", "content": ai_query}
-            ],
-            max_tokens=60
-        )
-        try:
-            ai_data = json.loads(ai_response['choices'][0]['message']['content'])
-            if ai_data.get('skill'): skill = ai_data['skill'].lower()
-            if ai_data.get('area'): area = ai_data['area'].lower()
-        except Exception as e:
-            print("AI query parse error:", e)
-
     if request.method == 'POST':
         users = User.query
         if query:
@@ -328,7 +319,7 @@ def search():
             for cv in u.resumes:
                 ok = True
                 if skill:
-                    tags = [t.tag.lower() for t in cv.tags]
+                    tags = [t.tag for t in cv.tags]
                     if skill not in tags:
                         ok = False
                 up = cv.upload_time.date()
@@ -368,86 +359,35 @@ def download_resume(resume_id):
         UPLOAD_FOLDER, resume.filename, as_attachment=True
     )
 
-@app.route('/ai_assess/<int:resume_id>', methods=['POST'])
-@login_required
-def ai_assess(resume_id):
-    # Only for managers/agencies
-    if current_user.role not in ['manager', 'agency']:
-        flash('Access denied.')
-        return redirect(url_for('search'))
-    resume = Resume.query.get_or_404(resume_id)
-    cv_text = extract_text(os.path.join(app.config['UPLOAD_FOLDER'], resume.filename))
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are an expert recruiter. Evaluate the following CV for strengths, weaknesses, and possible job fit, as a short report."},
-            {"role": "user", "content": cv_text[:3500]}
-        ],
-        max_tokens=250
-    )
-    assessment = response['choices'][0]['message']['content']
-    flash(f"AI Assessment:<br>{assessment}")
-    return redirect(request.referrer or url_for('search'))
-
-@app.route('/profile', methods=['GET', 'POST'])
-@login_required
-def profile():
-    if request.method == 'POST':
-        name = request.form['username'].strip()
-        area = request.form.get('area', '').strip()
-        pw   = request.form.get('password', '')
-        changed = False
-
-        if name and name != current_user.name:
-            if User.query.filter_by(name=name).first():
-                flash('That username is already taken.')
-                return redirect(url_for('profile'))
-            current_user.name = name
-            changed = True
-
-        if area != current_user.area:
-            current_user.area = area
-            changed = True
-
-        if pw:
-            current_user.password = pbkdf2_sha256.hash(pw)
-            changed = True
-
-        if changed:
-            db.session.commit()
-            flash('Profile updated successfully.')
-        else:
-            flash('No changes made.')
-        return redirect(url_for('profile'))
-
-    return render_template('profile.html')
-
+# -- Manager All CVs View --
 @app.route('/manager/all_cvs')
 @login_required
 def manager_all_cvs():
     if current_user.role != 'manager':
-        flash("You do not have permission to access this page.")
+        flash("You don't have access.")
         return redirect(url_for('home'))
     all_resumes = Resume.query.order_by(Resume.upload_time.desc()).all()
     return render_template('manager_all_cvs.html', resumes=all_resumes)
 
+@app.route('/ai_assess/<int:resume_id>', methods=['POST'])
+@login_required
+def ai_assess(resume_id):
+    if current_user.role != 'manager':
+        flash("You don't have access.")
+        return redirect(url_for('home'))
+    resume = Resume.query.get_or_404(resume_id)
+    path = os.path.join(app.config['UPLOAD_FOLDER'], resume.filename)
+    cv_text = extract_text(path)
+    summary = generate_cv_summary(cv_text)
+    if summary:
+        resume.summary = summary
+        db.session.commit()
+        flash("AI summary updated!")
+    else:
+        flash("Could not generate AI summary (missing API key?)")
+    return redirect(url_for('manager_all_cvs'))
+
 if __name__ == '__main__':
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     with app.app_context():
         db.create_all()
     app.run(debug=True)
-
-@app.route("/createmanager")
-def create_manager_user():
-    from passlib.hash import pbkdf2_sha256
-    if not User.query.filter_by(name="manager1").first():
-        user = User(
-            name="manager1",
-            password=pbkdf2_sha256.hash("YourSuperSecretPassword"),
-            role="manager"
-        )
-        db.session.add(user)
-        db.session.commit()
-        return "Manager created!"
-    return "Manager already exists!"
-
