@@ -39,7 +39,6 @@
     .site-title {
       font-size: 2.2em;
       font-weight: 900;
-      letter-spacing: 0px;
       color: #a4b9d9;
       margin: 0;
       text-shadow: 0 1px 0 #0e1115, 0 6px 12px #33aaff33;
@@ -88,12 +87,80 @@
       font-weight: 500;
       text-shadow: 0 1px 1px #0008;
     }
+
+    /* --- MOBILE STYLES --- */
     @media (max-width: 700px) {
-      .main-container { padding: 1.1rem 0.3rem 1.7rem 0.3rem; }
-      .site-title { font-size: 1.2em; }
+      .main-container { padding: 1.1rem 0.2rem 1.1rem 0.2rem; }
+      .site-title { font-size: 1.25em; }
       .site-header { gap: 0.6em; }
-      nav.site-nav { gap: 0.7em; }
+      nav.site-nav { 
+        gap: 0.7em;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      nav.site-nav a {
+        width: 100%;
+        font-size: 1em;
+        padding: 0.55em 1em;
+        margin-bottom: 2px;
+        box-sizing: border-box;
+        text-align: center;
+      }
       .site-logo { height: 38px; width: 38px; }
+    }
+    /* Make forms and cards mobile friendly */
+    form, .search-card, .profile-card, .login-card, .register-card {
+      width: 100%;
+      max-width: 380px;
+      margin: 1.5rem auto;
+      background: #16202cbb;
+      border-radius: 14px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      padding: 1.6rem 1.2rem;
+      text-align: left;
+    }
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 0.4rem;
+    }
+    input, select, button, textarea {
+      width: 100%;
+      padding: 0.66rem;
+      margin-bottom: 1rem;
+      border: 1px solid #c9c9c9;
+      border-radius: 6px;
+      font-size: 1.07em;
+      box-sizing: border-box;
+    }
+    button {
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.7rem;
+      font-size: 1.07em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    /* Responsive tables */
+    @media (max-width: 700px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+        width: 100%;
+      }
+      th, td {
+        padding: 0.7em 0.3em;
+        font-size: 1em;
+        border: none;
+        border-bottom: 1px solid #202d3d;
+      }
+      tr { margin-bottom: 1em; }
+      th { background: #233147; }
     }
   </style>
   {% block head %}{% endblock %}
