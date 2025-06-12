@@ -17,13 +17,12 @@ from werkzeug.utils import secure_filename
 
 # Optional: OpenAI support
 import openai
-
 import stripe
 
 # --- Ensure uploads directory exists at startup ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # <--- MAGIC LINE
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # <--- CREATES uploads folder on startup
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'replace-this-in-prod')
@@ -221,6 +220,14 @@ def upload_cv():
 
     safe_filename = f"{username.replace(' ','_')}_{secure_filename(file.filename)}"
     save_path = os.path.join(UPLOAD_FOLDER, safe_filename)
+
+    # --- Defensive check: ensure uploads folder exists ---
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        print("Created uploads folder at", UPLOAD_FOLDER)
+    else:
+        print("Uploads folder already exists:", UPLOAD_FOLDER)
+
     file.save(save_path)
 
     resume = Resume(filename=safe_filename, user_id=user.id)
