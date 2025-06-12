@@ -1,3 +1,4 @@
+flask_migrate
 Flask
 Flask-Login
 Flask-SQLAlchemy
