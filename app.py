@@ -133,6 +133,9 @@ def parse_and_save_tags(resume):
         db.session.add(ResumeTag(tag=tag, resume_id=resume.id))
     db.session.commit()
 
+with app.app_context():
+    db.create_all()
+
 @app.route('/')
 def home():
     return render_template('index.html')
