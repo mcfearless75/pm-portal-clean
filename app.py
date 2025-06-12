@@ -15,24 +15,20 @@ from flask_login import (
 from passlib.hash import pbkdf2_sha256
 from werkzeug.utils import secure_filename
 
-import stripe
-
-# Optional: OpenAI setup
+# Optional: OpenAI support
 import openai
 
-# Flask app config
-app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'replace-this-in-prod')
+import stripe
 
+# --- Ensure uploads directory exists at startup ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-DB_PATH = os.path.join(BASE_DIR, 'database.db')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # <--- MAGIC LINE
 
-# Always create uploads folder!
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'replace-this-in-prod')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(BASE_DIR, 'database.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
