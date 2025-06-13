@@ -112,6 +112,14 @@ def generate_cv_summary(cv_text):
 
 # --- ROUTES ---
 
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    # This can be improved, but here's a placeholder:
+    if request.method == 'POST':
+        flash('If your account exists, you’ll receive an email to reset your password (feature coming soon).')
+        return redirect(url_for('login'))
+    return render_template('forgot_password.html')
+
 @app.route('/')
 @login_required
 def home():
