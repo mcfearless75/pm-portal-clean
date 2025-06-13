@@ -1,8 +1,8 @@
-"""Add summary field to Resume
+"""Initial
 
-Revision ID: bd95f1cd8f05
+Revision ID: 29903db92424
 Revises: 
-Create Date: 2025-06-12 18:05:23.510765
+Create Date: 2025-06-13 07:59:21.251889
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'bd95f1cd8f05'
+revision = '29903db92424'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -25,6 +25,9 @@ def upgrade():
     sa.Column('role', sa.String(length=20), nullable=False),
     sa.Column('area', sa.String(length=100), nullable=True),
     sa.Column('credits', sa.Integer(), nullable=True),
+    sa.Column('email', sa.String(length=120), nullable=True),
+    sa.Column('address', sa.String(length=200), nullable=True),
+    sa.Column('phone', sa.String(length=40), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
