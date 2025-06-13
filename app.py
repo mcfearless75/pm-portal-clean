@@ -4,8 +4,8 @@ from datetime import datetime
 from collections import Counter
 
 from flask import (
-    Flask, render_template, request, redirect,
-    url_for, flash, send_from_directory
+    Flask, render_template, request,
+    redirect, url_for, flash, send_from_directory
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -13,35 +13,43 @@ from flask_login import (
     logout_user, current_user
 )
 from passlib.hash import pbkdf2_sha256
-from werkzeug.utils import secure_filename
-
-import openai
+from flask_migrate import Migrate
+from PyPDF2 import PdfReader
+import docx
 import stripe
+import openai
 
-# --- App and Config ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# --- CONFIG ---
+openai.api_key = os.getenv("OPENAI_API_KEY")
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")  # Set in environment
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'replace-this-in-prod')
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'changeme-in-prod')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+DB_PATH = os.path.join(BASE_DIR, 'database.db')
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(BASE_DIR, 'database.db')}"
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{DB_PATH}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# --- Models ---
+# --- MODELS ---
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(256), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # 'contractor', 'agency', 'manager'
+    role = db.Column(db.String(20), nullable=False)  # contractor, agency, manager
     area = db.Column(db.String(100), nullable=True)
     credits = db.Column(db.Integer, default=0)
+    email = db.Column(db.String(120), nullable=True)
+    address = db.Column(db.String(200), nullable=True)
+    phone = db.Column(db.String(40), nullable=True)
     resumes = db.relationship('Resume', backref='user', lazy=True)
 
 class Resume(db.Model):
@@ -50,51 +58,33 @@ class Resume(db.Model):
     upload_time = db.Column(db.DateTime, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     summary = db.Column(db.Text, nullable=True)
+    tags = db.relationship('ResumeTag', backref='resume', lazy=True, cascade="all, delete-orphan")
 
 class ResumeTag(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tag = db.Column(db.String(100), nullable=False)
     resume_id = db.Column(db.Integer, db.ForeignKey('resume.id'), nullable=False)
 
-Resume.tags = db.relationship(
-    'ResumeTag',
-    backref='resume',
-    lazy=True,
-    cascade="all, delete-orphan"
-)
-
-# --- Ensure DB tables always exist on launch ---
-with app.app_context():
-    db.create_all()
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
-STOPWORDS = {
-    'the','and','for','with','that','this','from','your','have','will',
-    'project','manager','experience'
-}
+STOPWORDS = {'the','and','for','with','that','this','from','your','have','will','project','manager','experience'}
 
 def allowed_file(filename):
-    return (
-        '.' in filename and
-        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-    )
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def extract_text(filepath):
-    ext = filepath.rsplit('.',1)[1].lower()
+    ext = filepath.rsplit('.', 1)[1].lower()
     text = ''
     if ext == 'pdf':
-        from PyPDF2 import PdfReader
         reader = PdfReader(filepath)
         for page in reader.pages:
             text += page.extract_text() or ''
     elif ext == 'docx':
-        import docx
-        doc = docx.Document(filepath)
-        for p in doc.paragraphs:
+        docf = docx.Document(filepath)
+        for p in docf.paragraphs:
             text += p.text + ' '
     return text
 
@@ -103,40 +93,37 @@ def parse_and_save_tags(resume):
     raw = extract_text(path).lower()
     words = re.findall(r'\b[a-z]{4,}\b', raw)
     words = [w for w in words if w not in STOPWORDS]
-    top = [w for w,_ in Counter(words).most_common(15)]
+    top = [w for w, _ in Counter(words).most_common(15)]
     for w in top:
         tag = ResumeTag(tag=w, resume_id=resume.id)
         db.session.add(tag)
     db.session.commit()
 
 def generate_cv_summary(cv_text):
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    if not openai.api_key:
-        return None
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an expert CV summariser."},
-                {"role": "user", "content": f"Summarise this CV for recruiters: {cv_text[:3500]}"}
-            ],
-            max_tokens=100
-        )
-        return response['choices'][0]['message']['content'].strip()
-    except Exception as e:
-        print("OpenAI Error:", e)
-        return None
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are an expert CV summariser."},
+            {"role": "user", "content": f"Summarise this CV for recruiters: {cv_text[:3500]}"}
+        ],
+        max_tokens=120
+    )
+    return response['choices'][0]['message']['content'].strip()
+
+# --- ROUTES ---
 
 @app.route('/')
+@login_required
 def home():
-    return render_template('index.html')
-
-@app.route('/forgot_password', methods=['GET', 'POST'])
-def forgot_password():
-    if request.method == 'POST':
-        email_or_user = request.form.get('username')
-        return render_template('forgot_password.html', message="If an account exists, a reset link has been sent.")
-    return render_template('forgot_password.html', message=None)
+    if current_user.role == "contractor":
+        resumes = Resume.query.filter_by(user_id=current_user.id).order_by(Resume.upload_time.desc()).all()
+        return render_template('contractor_home.html', resumes=resumes)
+    elif current_user.role == "manager":
+        return redirect(url_for('manager_all_cvs'))
+    elif current_user.role == "agency":
+        return redirect(url_for('search'))
+    else:
+        return render_template('index.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -145,8 +132,11 @@ def register():
         pw = request.form['password']
         role = request.form['role']
         area = request.form.get('area', '').strip()
+        email = request.form.get('email', '').strip()
+        address = request.form.get('address', '').strip()
+        phone = request.form.get('phone', '').strip()
 
-        if not name or not pw or role not in ['contractor', 'agency', 'manager']:
+        if not name or not pw or role not in ['contractor', 'agency']:
             flash('All fields are required.')
             return redirect(url_for('register'))
 
@@ -158,7 +148,10 @@ def register():
             name=name,
             password=pbkdf2_sha256.hash(pw),
             role=role,
-            area=area if role == 'contractor' else None
+            area=area if role == 'contractor' else None,
+            email=email,
+            address=address,
+            phone=phone
         )
         db.session.add(user)
         db.session.commit()
@@ -179,6 +172,7 @@ def login():
             return redirect(url_for('home'))
         flash('Invalid credentials.')
         return redirect(url_for('login'))
+
     return render_template('login.html')
 
 @app.route('/logout')
@@ -192,59 +186,122 @@ def logout():
 @login_required
 def profile():
     if request.method == 'POST':
-        username = request.form.get('username').strip()
-        area = request.form.get('area').strip()
-        pw = request.form.get('password')
-        current_user.name = username
-        current_user.area = area
-        if pw:
-            current_user.password = pbkdf2_sha256.hash(pw)
+        # Allow editing of profile info
+        current_user.name = request.form.get('name', current_user.name).strip()
+        current_user.area = request.form.get('area', current_user.area)
+        current_user.email = request.form.get('email', current_user.email)
+        current_user.address = request.form.get('address', current_user.address)
+        current_user.phone = request.form.get('phone', current_user.phone)
         db.session.commit()
         flash("Profile updated!")
+        return redirect(url_for('profile'))
     return render_template('profile.html')
 
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload_cv():
-    username = current_user.name
     file = request.files.get('cv_file')
-
-    if not username or not file or file.filename == '':
-        flash('Name and CV file are required.')
+    if not file or file.filename == '':
+        flash('CV file is required.')
         return redirect(url_for('home'))
     if not allowed_file(file.filename):
         flash('Only PDF and DOCX files are allowed.')
         return redirect(url_for('home'))
-
-    user = User.query.filter_by(name=username).first()
-    if not user:
-        flash('No user found.')
-        return redirect(url_for('home'))
-
-    safe_filename = f"{username.replace(' ','_')}_{secure_filename(file.filename)}"
-    save_path = os.path.join(UPLOAD_FOLDER, safe_filename)
-
-    # Defensive: Ensure uploads folder exists before saving
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
+    user = User.query.get(current_user.id)
+    safe_name = f"{current_user.name.replace(' ','_')}_{file.filename}"
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    save_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_name)
     file.save(save_path)
-
-    resume = Resume(filename=safe_filename, user_id=user.id)
+    resume = Resume(filename=safe_name, user_id=user.id)
     db.session.add(resume)
     db.session.commit()
-
     parse_and_save_tags(resume)
+    flash(f"Your CV '{file.filename}' has been uploaded.")
+    return redirect(url_for('home'))
 
-    # AI summary
-    cv_text = extract_text(save_path)
-    summary = generate_cv_summary(cv_text)
-    if summary:
+@app.route('/contractor/ai_summary/<int:resume_id>', methods=['POST'])
+@login_required
+def contractor_ai_summary(resume_id):
+    resume = Resume.query.get_or_404(resume_id)
+    if resume.user_id != current_user.id:
+        flash("Not allowed.", "danger")
+        return redirect(url_for('home'))
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], resume.filename)
+    text = extract_text(file_path)
+    try:
+        summary = generate_cv_summary(text)
         resume.summary = summary
         db.session.commit()
+        flash("AI summary generated!", "success")
+    except Exception as e:
+        flash("AI summary failed: " + str(e), "danger")
+    return redirect(url_for('home'))
 
-    message = f"Thanks, {username}! Your CV “{file.filename}” has been uploaded."
-    return render_template('index.html', message=message)
+@app.route('/download/<int:resume_id>')
+@login_required
+def download_resume(resume_id):
+    resume = Resume.query.get_or_404(resume_id)
+    if resume.user_id != current_user.id and current_user.role not in ['manager', 'agency']:
+        flash('You are not allowed to download this file.')
+        return redirect(url_for('home'))
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'], resume.filename, as_attachment=True
+    )
+
+# --- MANAGER ROUTES ---
+@app.route('/manager/all_cvs')
+@login_required
+def manager_all_cvs():
+    if current_user.role != 'manager':
+        flash("Access denied.")
+        return redirect(url_for('home'))
+    all_resumes = Resume.query.order_by(Resume.upload_time.desc()).all()
+    return render_template('manager_all_cvs.html', resumes=all_resumes)
+
+# --- AGENCY ROUTES ---
+@app.route('/search', methods=['GET', 'POST'])
+@login_required
+def search():
+    if current_user.role != "agency":
+        flash("Access denied.")
+        return redirect(url_for('home'))
+    query = request.form.get('query', '').strip() if request.method == 'POST' else ''
+    skill = request.form.get('skill', '').strip().lower() if request.method == 'POST' else ''
+    date_from = request.form.get('date_from', '') if request.method == 'POST' else ''
+    date_to = request.form.get('date_to', '') if request.method == 'POST' else ''
+    area = request.form.get('area', '').strip().lower() if request.method == 'POST' else ''
+    results = []
+    if request.method == 'POST':
+        users = User.query
+        if query:
+            users = users.filter(User.name.ilike(f'%{query}%'))
+        if area:
+            users = users.filter(User.area.ilike(f'%{area}%'))
+        users = users.all()
+        for u in users:
+            for cv in u.resumes:
+                ok = True
+                if skill:
+                    tags = [t.tag for t in cv.tags]
+                    if skill not in tags:
+                        ok = False
+                up = cv.upload_time.date()
+                if date_from:
+                    df = datetime.fromisoformat(date_from).date()
+                    if up < df:
+                        ok = False
+                if date_to:
+                    dt = datetime.fromisoformat(date_to).date()
+                    if up > dt:
+                        ok = False
+                if ok:
+                    results.append((u, cv))
+    return render_template(
+        'search.html',
+        query=query, skill=skill, area=area,
+        date_from=date_from, date_to=date_to,
+        results=results
+    )
 
 @app.route('/buy_credits', methods=['GET', 'POST'])
 @login_required
@@ -266,9 +323,7 @@ def create_checkout_session():
     except:
         flash('Invalid quantity.')
         return redirect(url_for('buy_credits'))
-
-    stripe.api_key = os.getenv("STRIPE_API_KEY")
-    price_per_credit = 200
+    price_per_credit = 200  # in pence (£2)
     session = stripe.checkout.Session.create(
         payment_method_types=['card'],
         line_items=[{
@@ -284,7 +339,7 @@ def create_checkout_session():
         mode='payment',
         success_url=url_for('payment_success', credits=credits, _external=True),
         cancel_url=url_for('buy_credits', _external=True),
-        customer_email=current_user.name if '@' in current_user.name else None
+        customer_email=current_user.email or ""
     )
     return redirect(session.url, code=303)
 
@@ -298,95 +353,9 @@ def payment_success():
         flash(f'Success! {credits} credits added. You now have {current_user.credits} credits.')
     return redirect(url_for('search'))
 
-@app.route('/search', methods=['GET','POST'])
-@login_required
-def search():
-    query     = request.form.get('query','').strip()     if request.method=='POST' else ''
-    skill     = request.form.get('skill','').strip().lower() if request.method=='POST' else ''
-    date_from = request.form.get('date_from','')          if request.method=='POST' else ''
-    date_to   = request.form.get('date_to','')            if request.method=='POST' else ''
-    area      = request.form.get('area','').strip().lower() if request.method=='POST' else ''
-    ai_query  = request.form.get('ai_query','').strip() if request.method=='POST' else ''
-
-    results = []
-    if request.method == 'POST':
-        users = User.query
-        if query:
-            users = users.filter(User.name.ilike(f'%{query}%'))
-        if area:
-            users = users.filter(User.area.ilike(f'%{area}%'))
-        users = users.all()
-
-        for u in users:
-            for cv in u.resumes:
-                ok = True
-                if skill:
-                    tags = [t.tag for t in cv.tags]
-                    if skill not in tags:
-                        ok = False
-                up = cv.upload_time.date()
-                if date_from:
-                    df = datetime.fromisoformat(date_from).date()
-                    if up < df:
-                        ok = False
-                if date_to:
-                    dt = datetime.fromisoformat(date_to).date()
-                    if up > dt:
-                        ok = False
-                if ok:
-                    results.append((u, cv))
-
-    return render_template(
-        'search.html',
-        query=query,
-        skill=skill,
-        area=area,
-        date_from=date_from,
-        date_to=date_to,
-        ai_query=ai_query,
-        results=results
-    )
-
-@app.route('/download/<int:resume_id>')
-@login_required
-def download_resume(resume_id):
-    if current_user.role == 'agency':
-        if current_user.credits <= 0:
-            flash('You need to buy credits to download CVs.')
-            return redirect(url_for('buy_credits'))
-        current_user.credits -= 1
-        db.session.commit()
-    resume = Resume.query.get_or_404(resume_id)
-    return send_from_directory(
-        UPLOAD_FOLDER, resume.filename, as_attachment=True
-    )
-
-@app.route('/manager/all_cvs')
-@login_required
-def manager_all_cvs():
-    if current_user.role != 'manager':
-        flash("You don't have access.")
-        return redirect(url_for('home'))
-    all_resumes = Resume.query.order_by(Resume.upload_time.desc()).all()
-    return render_template('manager_all_cvs.html', resumes=all_resumes)
-
-@app.route('/ai_assess/<int:resume_id>', methods=['POST'])
-@login_required
-def ai_assess(resume_id):
-    if current_user.role != 'manager':
-        flash("You don't have access.")
-        return redirect(url_for('home'))
-    resume = Resume.query.get_or_404(resume_id)
-    path = os.path.join(app.config['UPLOAD_FOLDER'], resume.filename)
-    cv_text = extract_text(path)
-    summary = generate_cv_summary(cv_text)
-    if summary:
-        resume.summary = summary
-        db.session.commit()
-        flash("AI summary updated!")
-    else:
-        flash("Could not generate AI summary (missing API key?)")
-    return redirect(url_for('manager_all_cvs'))
-
+# --- BOOTSTRAP DB ON FIRST RUN ---
 if __name__ == '__main__':
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Your Uploaded CVs{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h2>Welcome, {{ current_user.name }}!</h2>
+    <p class="intro">Here are your uploaded CVs. You can upload new CVs at any time.</p>
+
+    <table class="cv-table">
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Uploaded</th>
+                <th>Tags</th>
+                <th>AI Summary</th>
+                <th>Download</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cv in resumes %}
+                <tr>
+                    <td>{{ cv.filename }}</td>
+                    <td>{{ cv.upload_time.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        {% if cv.tags %}
+                            {{ cv.tags | map(attribute='tag') | join(', ') }}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td style="max-width:320px;">
+                        {% if cv.summary %}
+                            {{ cv.summary }}
+                        {% else %}
+                            <form action="{{ url_for('contractor_ai_summary', resume_id=cv.id) }}" method="post" style="display:inline;">
+                                <button type="submit" class="btn btn-sm">Generate</button>
+                            </form>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('download_resume', resume_id=cv.id) }}" class="btn btn-sm">Download</a>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="5"><em>No CVs uploaded yet.</em></td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <form action="{{ url_for('upload_cv') }}" method="post" enctype="multipart/form-data" class="upload-form">
+        <label for="cv_file" class="upload-label">Upload New CV (PDF or DOCX):</label>
+        <input type="file" name="cv_file" id="cv_file" accept=".pdf,.docx" required>
+        <button type="submit" class="btn btn-main">Upload CV</button>
+    </form>
+</div>
+<style>
+.dashboard-container { max-width: 780px; margin: 0 auto; padding: 2em; }
+.cv-table { width: 100%; border-collapse: collapse; margin-bottom: 2em; }
+.cv-table th, .cv-table td { padding: 0.8em; border-bottom: 1px solid #233; text-align: left; vertical-align: top; }
+.cv-table th { background: #16253c; color: #b2e6fa; }
+.cv-table tr:hover { background: #203652; }
+.upload-form { margin-top: 1em; display: flex; flex-direction: column; gap: 0.7em; }
+.upload-label { font-weight: 600; }
+.btn-main { background: linear-gradient(90deg,#2dafff 20%,#369bff 100%); color: #fff; border: none; padding: 0.7em 2.1em; border-radius: 8px; font-size: 1.1em; cursor: pointer; transition: box-shadow 0.15s; }
+.btn-main:hover { box-shadow: 0 2px 15px #21a7ff44; }
+.btn-sm { background: #224b75; color: #d3f3fd; border: none; padding: 0.4em 1.3em; border-radius: 7px; font-size: 1em; cursor: pointer; }
+.btn-sm:hover { background: #3494e6; color: #fff; }
+.intro { color: #b3eaff; margin-bottom: 1.2em; }
+@media (max-width: 600px) {
+    .dashboard-container { padding: 1em; }
+    .cv-table th, .cv-table td { padding: 0.4em; }
+    .cv-table td { max-width: 130px; word-break: break-word; }
+}
+</style>
+{% endblock %}

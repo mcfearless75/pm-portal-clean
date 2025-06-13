@@ -1,90 +1,64 @@
-<meta name="viewport" content="width=device-width,initial-scale=1">
 {% extends "base.html" %}
-{% block title %}Profile Settings – PM Portal{% endblock %}
+{% block title %}Edit Profile{% endblock %}
 {% block content %}
-  <h2>Update Your Profile</h2>
-  <p class="tagline">Change your details and keep your account up to date.</p>
-  <form action="{{ url_for('profile') }}" method="post" class="profile-form" autocomplete="off">
-    <label for="username">Name</label>
-    <div class="input-wrap">
-      <span class="input-icon">👤</span>
-      <input type="text" name="username" id="username" value="{{ current_user.name }}" required />
-    </div>
-    <label for="area">Location/Area</label>
-    <div class="input-wrap">
-      <span class="input-icon">📍</span>
-      <input type="text" name="area" id="area" value="{{ current_user.area or '' }}" />
-    </div>
-    <label for="password">New Password</label>
-    <div class="input-wrap">
-      <span class="input-icon">🔒</span>
-      <input type="password" name="password" id="password" placeholder="Leave blank to keep current" />
-    </div>
-    <button type="submit" class="stripe-btn profile-btn">💾 Update Profile</button>
-  </form>
-  <style>
-    .profile-form {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 1.2rem;
-      max-width: 400px;
-      margin: 2.7rem auto 0 auto;
-      background: rgba(13,30,50,0.13);
-      border-radius: 12px;
-      padding: 2rem 1.7rem 1.3rem 1.7rem;
-      box-shadow: 0 2px 16px #2681c822;
-    }
-    .profile-form label {
-      font-weight: 700;
-      color: #eaf6fb;
-      margin-bottom: 0.22em;
-      text-align: left;
-      font-size: 1.07em;
-      margin-top: 0.4em;
-    }
-    .input-wrap {
-      position: relative;
-      display: flex;
-      align-items: center;
-    }
-    .input-icon {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 1.13em;
-      color: #42a5f5;
-      pointer-events: none;
-    }
-    .profile-form input[type="text"],
-    .profile-form input[type="password"] {
-      width: 100%;
-      padding: 0.75em 0.6em 0.75em 2.2em;
-      border-radius: 7px;
-      border: 1px solid #69b5fa;
-      background: #e3f2fd;
-      color: #1a2940;
-      font-size: 1.08em;
-      font-weight: 600;
-      margin-bottom: 0.05em;
-      transition: border 0.2s, box-shadow 0.2s;
-      box-sizing: border-box;
-    }
-    .profile-form input:focus {
-      border-color: #3498db;
-      outline: none;
-      box-shadow: 0 0 0 2px #3498db55;
-    }
-    .profile-btn {
-      margin-top: 1.2rem;
-      width: 100%;
-      font-size: 1.13em;
-      padding: 0.85em 0;
-      letter-spacing: 0.01em;
-    }
-    @media (max-width: 600px) {
-      .profile-form { padding: 1.4rem 0.7rem; max-width: 100%; }
-    }
-  </style>
+<h2>Edit Your Profile</h2>
+<form method="POST" class="profile-form">
+    <label>Name:</label>
+    <input type="text" name="username" value="{{ current_user.name }}" required>
+    <label>Email:</label>
+    <input type="email" name="email" value="{{ current_user.email or '' }}" autocomplete="email">
+    <label>Address:</label>
+    <input type="text" name="address" value="{{ current_user.address or '' }}">
+    <label>Phone:</label>
+    <input type="text" name="phone" value="{{ current_user.phone or '' }}">
+    <label>Area/Location:</label>
+    <input type="text" name="area" value="{{ current_user.area or '' }}">
+    <label>New Password (leave blank to keep current):</label>
+    <input type="password" name="password" autocomplete="new-password">
+    <button type="submit" class="btn">Save Changes</button>
+</form>
+<style>
+.profile-form {
+  max-width: 440px;
+  margin: 2rem auto;
+  background: #222e3b;
+  padding: 2.2rem 2rem 1.7rem 2rem;
+  border-radius: 15px;
+  box-shadow: 0 2px 16px #19344934;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1em;
+}
+.profile-form label {
+  font-weight: 600;
+  margin-bottom: 0.2em;
+  color: #81cdfd;
+}
+.profile-form input {
+  padding: 0.65em;
+  border: 1px solid #28354a;
+  border-radius: 6px;
+  font-size: 1em;
+  background: #182635;
+  color: #d7f3ff;
+}
+.profile-form button {
+  margin-top: 1em;
+  background: #0ba2e6;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 0.8em;
+  font-size: 1.1em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.profile-form button:hover {
+  background: #1872a2;
+}
+@media (max-width: 600px) {
+  .profile-form { padding: 1.1rem 0.7rem 1.2rem 0.7rem; }
+}
+</style>
 {% endblock %}

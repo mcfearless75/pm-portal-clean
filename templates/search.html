@@ -1,52 +1,141 @@
-<meta name="viewport" content="width=device-width,initial-scale=1">
 {% extends "base.html" %}
-{% block title %}Search CVs{% endblock %}
+{% block title %}Search Contractors{% endblock %}
+{% block head %}
+<style>
+/* Centered form container with padding and shadow */
+.search-form-wrapper {
+  max-width: 520px;
+  margin: 2.5rem auto 2rem auto;
+  padding: 2.3rem 1.7rem 2.3rem 1.7rem;
+  background: rgba(28,40,55,0.98);
+  border-radius: 1.5em;
+  box-shadow: 0 4px 40px #009dff23, 0 1px 0 #333a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.search-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 2.25rem;
+  font-weight: 900;
+  color: #e3f2fd;
+  margin-bottom: 1.3rem;
+  justify-content: center;
+  text-align: center;
+}
+
+.search-title-row .icon {
+  font-size: 1.4em;
+  color: #53bdfd;
+  filter: drop-shadow(0 2px 7px #14fff799);
+}
+
+.search-fields {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15em;
+}
+
+/* Unified input styling */
+.search-fields input[type="text"],
+.search-fields input[type="date"] {
+  width: 100%;
+  padding: 0.95em 1.1em;
+  border: none;
+  border-radius: 12px;
+  background: #232b39;
+  color: #e3f2fd;
+  font-size: 1.07em;
+  box-shadow: 0 1px 7px #00c0ff1e;
+  margin-top: 0.22em;
+  transition: box-shadow 0.2s, background 0.17s;
+}
+
+.search-fields input[type="text"]:focus,
+.search-fields input[type="date"]:focus {
+  background: #232f45;
+  box-shadow: 0 2px 12px #33d4fd3a;
+}
+
+.search-fields label {
+  font-size: 1.08em;
+  font-weight: 600;
+  color: #b6c8e9;
+  margin-bottom: 0.25em;
+  display: block;
+  letter-spacing: 0.03em;
+}
+
+.search-btn {
+  margin-top: 1.25em;
+  width: 100%;
+  background: linear-gradient(90deg, #1dcaff 0%, #3799f7 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.26em;
+  border: none;
+  border-radius: 14px;
+  padding: 1em 0;
+  cursor: pointer;
+  box-shadow: 0 2px 18px #15b3ff30;
+  transition: background 0.16s, box-shadow 0.18s, transform 0.08s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  letter-spacing: 0.01em;
+}
+.search-btn:hover, .search-btn:focus {
+  background: linear-gradient(90deg, #299dfc 0%, #3ae0ff 100%);
+  box-shadow: 0 7px 26px #38f2ff41;
+  transform: translateY(-2px) scale(1.033);
+}
+
+@media (max-width: 600px) {
+  .search-form-wrapper { padding: 1.1rem 0.2rem 1.5rem 0.2rem;}
+  .search-title-row { font-size: 1.28rem; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
-  <div class="search-card">
-    <h2>Search Contractors</h2>
-    <form action="{{ url_for('search') }}" method="post">
-      <label for="query">Name contains:</label>
-      <input type="text" name="query" id="query" value="{{ query }}" placeholder="e.g. Paul" />
-
-      <label for="skill">Skill (e.g. python):</label>
-      <input type="text" name="skill" id="skill" value="{{ skill }}" placeholder="e.g. python" />
-
-      <label for="area">Area/Location:</label>
-      <input type="text" name="area" id="area" value="{{ area }}" placeholder="e.g. Manchester" />
-
-      <label for="date_from">From:</label>
-      <input type="date" name="date_from" id="date_from" value="{{ date_from }}"/>
-
-      <label for="date_to">To:</label>
-      <input type="date" name="date_to" id="date_to" value="{{ date_to }}"/>
-
-      <label for="ai_query">AI Search (natural language):</label>
-      <input type="text" name="ai_query" id="ai_query" value="{{ ai_query }}" placeholder="e.g. DevOps lead in Manchester, AWS skills" />
-
-      <button type="submit">Search</button>
-    </form>
-
-    {% if results %}
-      <h2>Results:</h2>
-      <ul class="results-list">
-        {% for user, cv in results %}
-          <li>
-            <strong>{{ user.name }}</strong>
-            {% if user.area %}<span style="color:#666;">({{ user.area }})</span>{% endif %}
-            <small>(uploaded {{ cv.upload_time.strftime('%Y-%m-%d') }})</small><br/>
-            <em>Tags:</em> {{ cv.tags | map(attribute='tag') | join(', ') }}<br/>
-            <em>AI Summary:</em> {{ cv.summary or "-" }}<br/>
-            <a href="{{ url_for('download_resume', resume_id=cv.id) }}">Download CV</a>
-            {% if current_user.role in ['agency', 'manager'] %}
-              <form action="{{ url_for('ai_assess', resume_id=cv.id) }}" method="post" style="display:inline;">
-                <button type="submit" class="btn btn-sm">AI Assess</button>
-              </form>
-            {% endif %}
-          </li>
-        {% endfor %}
-      </ul>
-    {% elif request.method=='POST' %}
-      <p>No matches found.</p>
-    {% endif %}
+<div class="search-form-wrapper">
+  <div class="search-title-row">
+    <span class="icon">🔍</span>
+    <span>Search Contractors</span>
   </div>
+  <form method="post" autocomplete="off" class="search-fields">
+    <div>
+      <label for="name">Name contains</label>
+      <input type="text" id="name" name="query" placeholder="e.g. Paul" value="{{ query|default('') }}">
+    </div>
+    <div>
+      <label for="skill">Skill (e.g. Python)</label>
+      <input type="text" id="skill" name="skill" placeholder="e.g. Python" value="{{ skill|default('') }}">
+    </div>
+    <div>
+      <label for="area">Area/Location</label>
+      <input type="text" id="area" name="area" placeholder="e.g. Manchester" value="{{ area|default('') }}">
+    </div>
+    <div>
+      <label for="date_from">From</label>
+      <input type="date" id="date_from" name="date_from" value="{{ date_from|default('') }}">
+    </div>
+    <div>
+      <label for="date_to">To</label>
+      <input type="date" id="date_to" name="date_to" value="{{ date_to|default('') }}">
+    </div>
+    <div>
+      <label for="ai_query">AI Search (natural language)</label>
+      <input type="text" id="ai_query" name="ai_query" placeholder="e.g. DevOps lead in Manchester" value="{{ ai_query|default('') }}">
+    </div>
+    <button type="submit" class="search-btn">
+      <span style="font-size: 1.1em;">🔍</span> Search
+    </button>
+  </form>
+</div>
 {% endblock %}
